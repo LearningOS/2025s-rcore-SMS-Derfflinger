@@ -33,28 +33,13 @@ use crate::{config::MAX_APP_NUM, sync::UPSafeCell, task::get_current_task_id};
 
 /// handle syscall exception with `syscall_id` and other arguments
 pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
-
+    add_current_syscall_count(syscall_id);
     match syscall_id {
-        SYSCALL_WRITE => {
-            add_current_syscall_count(SYSCALL_WRITE);
-            sys_write(args[0], args[1] as *const u8, args[2])
-        }
-        SYSCALL_EXIT => {
-            add_current_syscall_count(SYSCALL_EXIT);
-            sys_exit(args[0] as i32)
-        }
-        SYSCALL_YIELD => {
-            add_current_syscall_count(SYSCALL_YIELD);
-            sys_yield()
-        }
-        SYSCALL_GET_TIME => {
-            add_current_syscall_count(SYSCALL_GET_TIME);
-            sys_get_time(args[0] as *mut TimeVal, args[1])
-        }
-        SYSCALL_TRACE => {
-            add_current_syscall_count(SYSCALL_TRACE);
-            sys_trace(args[0], args[1], args[2])
-        }
+        SYSCALL_WRITE => sys_write(args[0], args[1] as *const u8, args[2]),
+        SYSCALL_EXIT => sys_exit(args[0] as i32),
+        SYSCALL_YIELD => sys_yield(),
+        SYSCALL_GET_TIME => sys_get_time(args[0] as *mut TimeVal, args[1]),
+        SYSCALL_TRACE => sys_trace(args[0], args[1], args[2]),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
 }
@@ -63,7 +48,16 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
 fn add_current_syscall_count(syscall_id: usize) {
     let current_task_id = get_current_task_id();
     let mut counts = SYSCALL_COUNT.counts.exclusive_access();
-    *counts[current_task_id].entry(syscall_id).or_insert(0) += 1;
+    let valid_id = match syscall_id {
+        SYSCALL_WRITE => SYSCALL_WRITE,
+        SYSCALL_EXIT => SYSCALL_EXIT,
+        SYSCALL_YIELD => SYSCALL_YIELD,
+        SYSCALL_GET_TIME => SYSCALL_GET_TIME,
+        SYSCALL_TRACE => SYSCALL_TRACE,
+        _ => return,
+    };
+
+    *counts[current_task_id].entry(valid_id).or_insert(0) += 1;
 }
 
 /// Get the number of times the current task has called the syscall with `syscall_id`.
