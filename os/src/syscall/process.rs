@@ -1,5 +1,5 @@
 //! Process management syscalls
-use crate::task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next};
+use crate::{config::PAGE_SIZE, mm::{PageTable, PhysPageNum, VirtAddr}, task::{change_program_brk, current_user_token, exit_current_and_run_next, suspend_current_and_run_next}, timer::get_time_us};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -22,12 +22,32 @@ pub fn sys_yield() -> isize {
     0
 }
 
+/// write a usize data from kernel space to user space with the page table
+fn write_usize_to_userspace(page_table: &PageTable, va: VirtAddr, data: usize) {
+    let vpn = va.floor();
+    let ppn: PhysPageNum = page_table.translate(vpn).unwrap().ppn();
+    let va_start = va.0 - vpn.0 * PAGE_SIZE;
+    let bytes = ppn.get_bytes_array();
+    let data_bytes = data.to_le_bytes();
+    bytes[va_start..va_start + data_bytes.len()].copy_from_slice(&data_bytes);
+}
+
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+    let us = get_time_us();
+    let sec = us / 1_000_000;
+    let usec = us % 1_000_000;
+
+    let page_table = PageTable::from_token(current_user_token());
+    let va = VirtAddr::from(_ts as usize);
+
+    write_usize_to_userspace(&page_table, va, sec);
+    write_usize_to_userspace(&page_table, VirtAddr::from(va.0 + 8), usec);
+    
+    0
 }
 
 /// TODO: Finish sys_trace to pass testcases
