@@ -15,6 +15,7 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::{MapPermission, VirtAddr};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
@@ -87,6 +88,14 @@ impl TaskManager {
             __switch(&mut _unused as *mut _, next_task_cx_ptr);
         }
         panic!("unreachable in run_first_task!");
+    }
+
+    /// map a framed type maped area to current task's memory set
+    fn map_framed_area(&self, start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur].memory_set.insert_framed_area(start_va, end_va, permission);
+        drop(inner);
     }
 
     /// Change the status of current `Running` task into `Ready`.
@@ -236,4 +245,9 @@ pub fn get_current_syscall_count(syscall_id: usize) -> usize {
 /// add 1 to the number of times the current task has called the syscall with `syscall_id`
 pub fn add_current_syscall_count(syscall_id: usize) {
     TASK_MANAGER.add_current_syscall_count(syscall_id);
+}
+
+/// map a framed type maped area to current task's memory set
+pub fn map_framed_area(start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) {
+    TASK_MANAGER.map_framed_area(start_va, end_va, permission);
 }

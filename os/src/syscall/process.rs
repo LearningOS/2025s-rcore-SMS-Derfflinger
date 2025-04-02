@@ -1,5 +1,5 @@
 //! Process management syscalls
-use crate::{mm::{read_usize_from_userspace, PageTable, VirtAddr}, syscall::get_current_syscall_count, task::{change_program_brk, current_user_token, exit_current_and_run_next, suspend_current_and_run_next}, timer::get_time_us};
+use crate::{mm::{read_usize_from_userspace, MapPermission, PageTable, VirtAddr}, syscall::get_current_syscall_count, task::{change_program_brk, current_user_token, exit_current_and_run_next, map_framed_area, suspend_current_and_run_next}, timer::get_time_us};
 use crate::mm::write_usize_to_userspace;
 
 #[repr(C)]
@@ -87,8 +87,36 @@ pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
 
 // YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    -1
+    trace!("kernel: sys_mmap");
+    if _start % 4096 != 0 || _port & !0x7 != 0 || _port & 0x7 == 0 {
+        return -1;
+    }
+
+    let mut end = _start;
+    let page_table = PageTable::from_token(current_user_token());
+    while end < _start + _len {
+        let va = VirtAddr::from(end);
+        let vpn = va.floor();
+        end = match page_table.translate(vpn) {
+            Some(_pte) => return -1 as isize,
+            None => end + 4096,
+        }
+    }
+    
+    let mut permission = MapPermission::empty();
+    if _port & 0b1 != 0 {
+        permission |= MapPermission::R;
+    }
+    if _port & 0b10 != 0 {
+        permission |= MapPermission::W;
+    }
+    if _port & 0b100 != 0 {
+        permission |= MapPermission::X;
+    }
+    permission |= MapPermission::U;
+    map_framed_area(VirtAddr::from(_start), VirtAddr::from(_start + _len), permission);
+
+    0
 }
 
 // YOUR JOB: Implement munmap.
