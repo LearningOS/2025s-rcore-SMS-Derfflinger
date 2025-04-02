@@ -1,4 +1,6 @@
 //! Types related to task management
+use alloc::collections::btree_map::BTreeMap;
+
 use super::TaskContext;
 use crate::config::TRAP_CONTEXT_BASE;
 use crate::mm::{
@@ -19,6 +21,9 @@ pub struct TaskControlBlock {
 
     /// The phys page number of trap context
     pub trap_cx_ppn: PhysPageNum,
+
+    /// A structure to keep track of syscall counts
+    pub syscall_count: BTreeMap<usize, usize>,
 
     /// The size(top addr) of program which is loaded from elf file
     pub base_size: usize,
@@ -60,6 +65,7 @@ impl TaskControlBlock {
             task_cx: TaskContext::goto_trap_return(kernel_stack_top),
             memory_set,
             trap_cx_ppn,
+            syscall_count: BTreeMap::new(),
             base_size: user_sp,
             heap_bottom: user_sp,
             program_brk: user_sp,
@@ -95,6 +101,16 @@ impl TaskControlBlock {
         } else {
             None
         }
+    }
+
+    /// get the number of times the current task has called the syscall with `syscall_id`
+    pub fn get_syscall_count(&self, syscall_id: usize) -> usize {
+        *self.syscall_count.get(&syscall_id).unwrap_or(&0)
+    }
+
+    /// add 1 to the number of times the current task has called the syscall with `syscall_id`
+    pub fn add_syscall_count(&mut self, syscall_id: usize) {
+        *self.syscall_count.entry(syscall_id).or_insert(0) += 1;
     }
 }
 

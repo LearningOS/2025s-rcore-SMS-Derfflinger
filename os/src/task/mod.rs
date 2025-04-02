@@ -159,6 +159,20 @@ impl TaskManager {
         let inner = self.inner.exclusive_access();
         inner.current_task
     }
+
+    /// get the current task's syscall count with `syscall_id`
+    fn get_current_syscall_count(&self, syscall_id: usize) -> usize {
+        let inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur].get_syscall_count(syscall_id)
+    }
+
+    /// add 1 to the number of times of the current task's syscall count with `syscall_id`
+    fn add_current_syscall_count(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur].add_syscall_count(syscall_id);
+    }
 }
 
 /// Run the first task in task list.
@@ -212,4 +226,14 @@ pub fn change_program_brk(size: i32) -> Option<usize> {
 /// Get the current task id.
 pub fn get_current_task_id() -> usize {
     TASK_MANAGER.get_current_task_id()
+}
+
+/// get the number of times the current task has called the syscall with `syscall_id`
+pub fn get_current_syscall_count(syscall_id: usize) -> usize {
+    TASK_MANAGER.get_current_syscall_count(syscall_id)
+}
+
+/// add 1 to the number of times the current task has called the syscall with `syscall_id`
+pub fn add_current_syscall_count(syscall_id: usize) {
+    TASK_MANAGER.add_current_syscall_count(syscall_id);
 }

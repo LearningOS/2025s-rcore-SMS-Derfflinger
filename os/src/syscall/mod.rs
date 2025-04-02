@@ -30,10 +30,8 @@ mod process;
 
 use fs::*;
 use process::*;
-use lazy_static::lazy_static;
-use alloc::collections::BTreeMap;
 
-use crate::{config::MAX_APP_NUM, sync::UPSafeCell, task::get_current_task_id};
+use crate::task::{self};
 
 /// handle syscall exception with `syscall_id` and other arguments
 pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
@@ -53,8 +51,6 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
 
 /// Add 1 to the number of times the current task has called the syscall with `syscall_id`.
 fn add_current_syscall_count(syscall_id: usize) {
-    let current_task_id = get_current_task_id();
-    let mut counts = SYSCALL_COUNT.counts.exclusive_access();
     let valid_id = match syscall_id {
         SYSCALL_WRITE => SYSCALL_WRITE,
         SYSCALL_EXIT => SYSCALL_EXIT,
@@ -67,30 +63,10 @@ fn add_current_syscall_count(syscall_id: usize) {
         _ => return,
     };
 
-    *counts[current_task_id].entry(valid_id).or_insert(0) += 1;
+    task::add_current_syscall_count(valid_id);
 }
 
 /// Get the number of times the current task has called the syscall with `syscall_id`.
 pub fn get_current_syscall_count(syscall_id: usize) -> usize {
-    let current_task_id = get_current_task_id();
-    let counts = SYSCALL_COUNT.counts.exclusive_access();
-    *counts[current_task_id].get(&syscall_id).unwrap_or(&0)
-}
-
-/// A structure to keep track of syscall counts.
-pub struct SyscallCount {
-    counts: UPSafeCell<[BTreeMap<usize, usize>; MAX_APP_NUM]>,
-}
-
-lazy_static! {
-    /// Global variable: SYSCALL_COUNT
-    pub static ref SYSCALL_COUNT: SyscallCount = {
-        const ARRAY_REPEAT_VALUE: BTreeMap<usize, usize> = BTreeMap::new();
-        let arr: [BTreeMap<usize, usize>; MAX_APP_NUM] = [ARRAY_REPEAT_VALUE; MAX_APP_NUM];
-        SyscallCount {
-            counts: unsafe {
-                UPSafeCell::new(arr)
-            },
-        }
-    };
+    task::get_current_syscall_count(syscall_id)
 }
