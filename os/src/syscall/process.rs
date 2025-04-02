@@ -1,5 +1,6 @@
 //! Process management syscalls
-use crate::{config::PAGE_SIZE, mm::{PageTable, PhysPageNum, VirtAddr}, task::{change_program_brk, current_user_token, exit_current_and_run_next, suspend_current_and_run_next}, timer::get_time_us};
+use crate::{mm::{read_usize_from_userspace, PageTable, VirtAddr}, syscall::get_current_syscall_count, task::{change_program_brk, current_user_token, exit_current_and_run_next, suspend_current_and_run_next}, timer::get_time_us};
+use crate::mm::write_usize_to_userspace;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -20,16 +21,6 @@ pub fn sys_yield() -> isize {
     trace!("kernel: sys_yield");
     suspend_current_and_run_next();
     0
-}
-
-/// write a usize data from kernel space to user space with the page table
-fn write_usize_to_userspace(page_table: &PageTable, va: VirtAddr, data: usize) {
-    let vpn = va.floor();
-    let ppn: PhysPageNum = page_table.translate(vpn).unwrap().ppn();
-    let va_start = va.0 - vpn.0 * PAGE_SIZE;
-    let bytes = ppn.get_bytes_array();
-    let data_bytes = data.to_le_bytes();
-    bytes[va_start..va_start + data_bytes.len()].copy_from_slice(&data_bytes);
 }
 
 /// YOUR JOB: get time with second and microsecond
@@ -54,7 +45,44 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
 /// HINT: You might reimplement it with virtual memory management.
 pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
     trace!("kernel: sys_trace");
-    -1
+    match _trace_request {
+        0 => {
+            let page_table = PageTable::from_token(current_user_token());
+            let va = VirtAddr::from(_id);
+            let vpn = va.floor();
+            let pte = match page_table.translate(vpn) {
+                Some(_pte) => _pte,
+                None => return -1 as isize,
+            };
+            if pte.is_valid() && pte.readable() && pte.user_accessable() {
+                let result = read_usize_from_userspace(&page_table, va);
+                return result as isize;
+            } else {
+                return -1 as isize;
+            }
+        }
+        1 => {
+            let page_table = PageTable::from_token(current_user_token());
+            let va = VirtAddr::from(_id);
+            let vpn = va.floor();
+            let pte = match page_table.translate(vpn) {
+                Some(_pte) => _pte,
+                None => return -1 as isize,
+            };
+            if pte.is_valid() && pte.writable() && pte.user_accessable() {
+                write_usize_to_userspace(&page_table, va, _data);
+                return 0;
+            } else {
+                return -1 as isize;
+            }
+        }
+        2 => {
+            get_current_syscall_count(_id) as isize
+        }
+        _ => {
+            -1
+        }
+    }
 }
 
 // YOUR JOB: Implement mmap.

@@ -1,5 +1,7 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
 
+use crate::config::PAGE_SIZE;
+
 use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -69,6 +71,10 @@ impl PageTableEntry {
     /// The page pointered by page table entry is executable?
     pub fn executable(&self) -> bool {
         (self.flags() & PTEFlags::X) != PTEFlags::empty()
+    }
+    /// The page pointered by page table entry is user can access?
+    pub fn user_accessable(&self) -> bool {
+        (self.flags() & PTEFlags::U) != PTEFlags::empty()
     }
 }
 
@@ -178,4 +184,26 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
         start = end_va.into();
     }
     v
+}
+
+/// write a usize data from kernel space to user space with the page table pointed
+pub fn write_usize_to_userspace(page_table: &PageTable, va: VirtAddr, data: usize) {
+    let vpn = va.floor();
+    let ppn: PhysPageNum = page_table.translate(vpn).unwrap().ppn();
+    let va_start = va.0 - vpn.0 * PAGE_SIZE;
+    let bytes = ppn.get_bytes_array();
+    let data_bytes = data.to_le_bytes();
+    bytes[va_start..va_start + data_bytes.len()].copy_from_slice(&data_bytes);
+}
+
+/// read a usize data from user space with the page table pointed
+pub fn read_usize_from_userspace(page_table: &PageTable, va: VirtAddr) -> usize {
+    let value = translated_byte_buffer(page_table.token(), va.0 as *const u8, 8);
+    let mut array: [u8; 8] = [0; 8];
+    for (i, slice) in value.iter().enumerate() {
+        array[i] = slice[0];
+    }
+    let result = isize::from_le_bytes(array);
+
+    return result as usize;
 }

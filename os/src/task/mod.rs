@@ -153,6 +153,12 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// Get the current task id.
+    fn get_current_task_id(&self) -> usize {
+        let inner = self.inner.exclusive_access();
+        inner.current_task
+    }
 }
 
 /// Run the first task in task list.
@@ -201,4 +207,9 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// Get the current task id.
+pub fn get_current_task_id() -> usize {
+    TASK_MANAGER.get_current_task_id()
 }
