@@ -70,6 +70,20 @@ impl MemorySet {
         }
         self.areas.push(map_area);
     }
+    /// unmap an area in memory set
+    pub fn unmap_area(&mut self, start_va: VirtAddr, end_va: VirtAddr) {
+        let start_vpn = start_va.floor();
+        let end_vpn = end_va.floor();
+        for (i, map_area) in self.areas.iter_mut().enumerate() {
+            if map_area.vpn_range.get_start() == start_vpn && map_area.vpn_range.get_end() == end_vpn {
+                map_area.unmap(&mut self.page_table);
+                self.areas.remove(i);
+                return;
+            } else if map_area.vpn_range.get_start() <= start_vpn && map_area.vpn_range.get_end() >= end_vpn {
+                // todo
+            }
+        }
+    }
     /// Mention that trampoline is not collected by areas.
     fn map_trampoline(&mut self) {
         self.page_table.map(

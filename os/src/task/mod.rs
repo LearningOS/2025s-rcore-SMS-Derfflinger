@@ -91,10 +91,18 @@ impl TaskManager {
     }
 
     /// map a framed type maped area to current task's memory set
-    fn map_framed_area(&self, start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) {
+    fn map_current_framed_area(&self, start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) {
         let mut inner = self.inner.exclusive_access();
         let cur = inner.current_task;
         inner.tasks[cur].memory_set.insert_framed_area(start_va, end_va, permission);
+        drop(inner);
+    }
+
+    /// unmap an area in current task's memory set
+    fn unmap_current_area(&self, start_va: VirtAddr, end_va: VirtAddr) {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        inner.tasks[cur].memory_set.unmap_area(start_va, end_va);
         drop(inner);
     }
 
@@ -248,6 +256,11 @@ pub fn add_current_syscall_count(syscall_id: usize) {
 }
 
 /// map a framed type maped area to current task's memory set
-pub fn map_framed_area(start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) {
-    TASK_MANAGER.map_framed_area(start_va, end_va, permission);
+pub fn map_current_framed_area(start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) {
+    TASK_MANAGER.map_current_framed_area(start_va, end_va, permission);
+}
+
+/// unmap an area in current task's memory set
+pub fn unmap_current_area(start_va: VirtAddr, end_va: VirtAddr) {
+    TASK_MANAGER.unmap_current_area(start_va, end_va);
 }

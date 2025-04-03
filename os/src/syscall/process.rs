@@ -1,5 +1,5 @@
 //! Process management syscalls
-use crate::{mm::{read_usize_from_userspace, MapPermission, PageTable, VirtAddr}, syscall::get_current_syscall_count, task::{change_program_brk, current_user_token, exit_current_and_run_next, map_framed_area, suspend_current_and_run_next}, timer::get_time_us};
+use crate::{mm::{read_usize_from_userspace, MapPermission, PageTable, VirtAddr}, syscall::get_current_syscall_count, task::{change_program_brk, current_user_token, exit_current_and_run_next, map_current_framed_area, suspend_current_and_run_next, unmap_current_area}, timer::get_time_us};
 use crate::mm::write_usize_to_userspace;
 
 #[repr(C)]
@@ -92,13 +92,25 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
         return -1;
     }
 
+    let len = if _len == 0 {
+        4096
+    } else {
+        (_len + 4095) / 4096 * 4096
+    };
+
     let mut end = _start;
     let page_table = PageTable::from_token(current_user_token());
-    while end < _start + _len {
+    while end < _start + len {
         let va = VirtAddr::from(end);
         let vpn = va.floor();
         end = match page_table.translate(vpn) {
-            Some(_pte) => return -1 as isize,
+            Some(_pte) => {
+                if _pte.is_valid() {
+                    debug!("start: {}, page: {}", _start, end - _start);
+                    return -1 as isize;
+                }
+                end + 4096
+            }
             None => end + 4096,
         }
     }
@@ -114,15 +126,45 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
         permission |= MapPermission::X;
     }
     permission |= MapPermission::U;
-    map_framed_area(VirtAddr::from(_start), VirtAddr::from(_start + _len), permission);
+    map_current_framed_area(VirtAddr::from(_start), VirtAddr::from(_start + len), permission);
 
     0
 }
 
 // YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-    -1
+    trace!("kernel: sys_munmap");
+    if _start % 4096 != 0 || _len % 4096 != 0 {
+        return -1;
+    }
+
+    let len = if _len == 0 {
+        4096
+    } else {
+        (_len + 4095) / 4096 * 4096
+    };
+
+    let mut end = _start;
+    let page_table = PageTable::from_token(current_user_token());
+    while end < _start + len {
+        let va = VirtAddr::from(end);
+        let vpn = va.floor();
+        end = match page_table.translate(vpn) {
+            Some(_pte) => {
+                if !_pte.is_valid() {
+                    debug!("start: {}, page: {}", _start, end - _start);
+                    return -1 as isize;
+                } else {
+                    end + 4096
+                }
+            }
+            None => return -1 as isize,
+        }
+    }
+    
+    unmap_current_area(VirtAddr::from(_start), VirtAddr::from(_start + len));
+    
+    0
 }
 /// change data segment size
 pub fn sys_sbrk(size: i32) -> isize {
