@@ -75,12 +75,11 @@ impl MemorySet {
         let start_vpn = start_va.floor();
         let end_vpn = end_va.floor();
         for (i, map_area) in self.areas.iter_mut().enumerate() {
-            if map_area.vpn_range.get_start() == start_vpn && map_area.vpn_range.get_end() == end_vpn {
+            // for easy, if the area that want to unmap is in a already existing area's internal, will unmap this whole area
+            if map_area.vpn_range.get_start() <= start_vpn && map_area.vpn_range.get_end() >= end_vpn {
                 map_area.unmap(&mut self.page_table);
                 self.areas.remove(i);
                 return;
-            } else if map_area.vpn_range.get_start() <= start_vpn && map_area.vpn_range.get_end() >= end_vpn {
-                // todo
             }
         }
     }
