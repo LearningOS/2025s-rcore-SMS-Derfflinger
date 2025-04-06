@@ -82,6 +82,19 @@ impl MemorySet {
         }
         self.areas.push(map_area);
     }
+    /// unmap an area in memory set
+    pub fn unmap_area(&mut self, start_va: VirtAddr, end_va: VirtAddr) {
+        let start_vpn = start_va.floor();
+        let end_vpn = end_va.floor();
+        for (i, map_area) in self.areas.iter_mut().enumerate() {
+            // for easy, if the area that want to unmap is in a already existing area's internal, will unmap this whole area
+            if map_area.vpn_range.get_start() <= start_vpn && map_area.vpn_range.get_end() >= end_vpn {
+                map_area.unmap(&mut self.page_table);
+                self.areas.remove(i);
+                return;
+            }
+        }
+    }
     /// Mention that trampoline is not collected by areas.
     fn map_trampoline(&mut self) {
         self.page_table.map(
@@ -405,7 +418,9 @@ impl MapArea {
 #[derive(Copy, Clone, PartialEq, Debug)]
 /// map type for memory set: identical or framed
 pub enum MapType {
+    /// ...
     Identical,
+    /// ...
     Framed,
 }
 
