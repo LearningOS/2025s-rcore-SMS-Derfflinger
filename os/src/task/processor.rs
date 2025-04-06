@@ -7,6 +7,7 @@
 use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
+use crate::mm::{MapPermission, VirtAddr};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
@@ -108,4 +109,14 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
+}
+
+/// map a framed type maped area to current task's memory set
+pub fn map_current_framed_area(start_va: VirtAddr, end_va: VirtAddr, permission: MapPermission) {
+    current_task().unwrap().inner_exclusive_access().memory_set.insert_framed_area(start_va, end_va, permission);
+}
+
+/// unmap an area in current task's memory set
+pub fn unmap_current_area(start_va: VirtAddr, end_va: VirtAddr) {
+    current_task().unwrap().inner_exclusive_access().memory_set.unmap_area(start_va, end_va);
 }

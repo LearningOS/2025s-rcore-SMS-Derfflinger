@@ -4,11 +4,11 @@ use alloc::sync::Arc;
 
 use crate::{
     fs::{open_file, OpenFlags},
-    mm::{translated_refmut, translated_str},
+    mm::{translated_refmut, translated_str, write_usize_to_userspace, MapPermission, PageTable, VirtAddr},
     task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next,
+        add_task, current_task, current_user_token, exit_current_and_run_next, map_current_framed_area, suspend_current_and_run_next, unmap_current_area
     },
+    timer::get_time_us,
 };
 
 #[repr(C)]
@@ -107,10 +107,20 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_get_time",
         current_task().unwrap().pid.0
     );
-    -1
+    let us = get_time_us();
+    let sec = us / 1_000_000;
+    let usec = us % 1_000_000;
+
+    let page_table = PageTable::from_token(current_user_token());
+    let va = VirtAddr::from(_ts as usize);
+
+    write_usize_to_userspace(&page_table, va, sec);
+    write_usize_to_userspace(&page_table, VirtAddr::from(va.0 + 8), usec);
+
+    0
 }
 
 /// YOUR JOB: Implement mmap.
@@ -119,16 +129,86 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _start % 4096 != 0 || _port & !0x7 != 0 || _port & 0x7 == 0 {
+        return -1;
+    }
+
+    let len = if _len == 0 {
+        4096
+    } else {
+        (_len + 4095) / 4096 * 4096
+    };
+
+    let mut end = _start;
+    let page_table = PageTable::from_token(current_user_token());
+    while end < _start + len {
+        let va = VirtAddr::from(end);
+        let vpn = va.floor();
+        end = match page_table.translate(vpn) {
+            Some(_pte) => {
+                if _pte.is_valid() {
+                    debug!("start: {}, page: {}", _start, end - _start);
+                    return -1 as isize;
+                }
+                end + 4096
+            }
+            None => end + 4096,
+        }
+    }
+    
+    let mut permission = MapPermission::empty();
+    if _port & 0b1 != 0 {
+        permission |= MapPermission::R;
+    }
+    if _port & 0b10 != 0 {
+        permission |= MapPermission::W;
+    }
+    if _port & 0b100 != 0 {
+        permission |= MapPermission::X;
+    }
+    permission |= MapPermission::U;
+    map_current_framed_area(VirtAddr::from(_start), VirtAddr::from(_start + len), permission);
+
+    0
 }
 
 /// YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_munmap",
         current_task().unwrap().pid.0
     );
-    -1
+    if _start % 4096 != 0 || _len % 4096 != 0 {
+        return -1;
+    }
+
+    let len = if _len == 0 {
+        4096
+    } else {
+        (_len + 4095) / 4096 * 4096
+    };
+
+    let mut end = _start;
+    let page_table = PageTable::from_token(current_user_token());
+    while end < _start + len {
+        let va = VirtAddr::from(end);
+        let vpn = va.floor();
+        end = match page_table.translate(vpn) {
+            Some(_pte) => {
+                if !_pte.is_valid() {
+                    debug!("start: {}, page: {}", _start, end - _start);
+                    return -1 as isize;
+                } else {
+                    end + 4096
+                }
+            }
+            None => return -1 as isize,
+        }
+    }
+    
+    unmap_current_area(VirtAddr::from(_start), VirtAddr::from(_start + len));
+    
+    0
 }
 
 /// change data segment size

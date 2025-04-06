@@ -1,4 +1,6 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
+use crate::config::PAGE_SIZE;
+
 use super::{frame_alloc, FrameTracker, PhysAddr, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::string::String;
 use alloc::vec;
@@ -275,4 +277,14 @@ impl Iterator for UserBufferIterator {
             Some(r)
         }
     }
+}
+
+/// write a usize data from kernel space to user space with the page table
+pub fn write_usize_to_userspace(page_table: &PageTable, va: VirtAddr, data: usize) {
+    let vpn = va.floor();
+    let ppn: PhysPageNum = page_table.translate(vpn).unwrap().ppn();
+    let va_start = va.0 - vpn.0 * PAGE_SIZE;
+    let bytes = ppn.get_bytes_array();
+    let data_bytes = data.to_le_bytes();
+    bytes[va_start..va_start + data_bytes.len()].copy_from_slice(&data_bytes);
 }
