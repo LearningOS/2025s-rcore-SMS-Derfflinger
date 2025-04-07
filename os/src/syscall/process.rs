@@ -5,7 +5,7 @@ use crate::{
     loader::get_app_data_by_name,
     mm::{translated_refmut, translated_str, write_usize_to_userspace, MapPermission, PageTable, VirtAddr},
     task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next, map_current_framed_area, suspend_current_and_run_next, unmap_current_area, TaskControlBlock
+        add_task, current_task, current_user_token, exit_current_and_run_next, map_current_framed_area, set_current_priority, suspend_current_and_run_next, unmap_current_area, TaskControlBlock
     }, timer::get_time_us,
 };
 
@@ -251,5 +251,12 @@ pub fn sys_set_priority(_prio: isize) -> isize {
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+
+    if _prio < 2 {
+        return -1;
+    }
+
+    set_current_priority(_prio as usize);
+
+    _prio
 }

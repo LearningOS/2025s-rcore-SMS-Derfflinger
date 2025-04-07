@@ -115,3 +115,8 @@ lazy_static! {
 pub fn add_initproc() {
     add_task(INITPROC.clone());
 }
+
+/// set current task's priority
+pub fn set_current_priority(prior: usize) {
+    current_task().unwrap().inner_exclusive_access().set_priority(prior);
+}
