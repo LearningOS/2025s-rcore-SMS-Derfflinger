@@ -5,7 +5,7 @@ use crate::{
     loader::get_app_data_by_name,
     mm::{translated_refmut, translated_str, write_usize_to_userspace, MapPermission, PageTable, VirtAddr},
     task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next, map_current_framed_area, suspend_current_and_run_next, unmap_current_area
+        add_task, current_task, current_user_token, exit_current_and_run_next, map_current_framed_area, suspend_current_and_run_next, unmap_current_area, TaskControlBlock
     }, timer::get_time_us,
 };
 
@@ -125,7 +125,7 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
 /// YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     trace!(
-        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_mmap",
         current_task().unwrap().pid.0
     );
     if _start % 4096 != 0 || _port & !0x7 != 0 || _port & 0x7 == 0 {
@@ -224,10 +224,25 @@ pub fn sys_sbrk(size: i32) -> isize {
 /// HINT: fork + exec =/= spawn
 pub fn sys_spawn(_path: *const u8) -> isize {
     trace!(
-        "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
+        "kernel:pid[{}] sys_spawn",
         current_task().unwrap().pid.0
     );
-    -1
+
+    let token = current_user_token();
+    let path = translated_str(token, _path);
+    if let Some(data) = get_app_data_by_name(path.as_str()) {
+        let new_task = Arc::new(TaskControlBlock::new(data));
+        let current_task = current_task().unwrap();
+        let new_pid = new_task.pid.0;
+        // add child
+        current_task.inner_exclusive_access().children.push(new_task.clone());
+        
+        // add new task to scheduler
+        add_task(new_task);
+        new_pid as isize
+    } else {
+        -1
+    }
 }
 
 // YOUR JOB: Set task priority.
