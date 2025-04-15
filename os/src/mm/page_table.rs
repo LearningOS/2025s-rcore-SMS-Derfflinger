@@ -279,12 +279,32 @@ impl Iterator for UserBufferIterator {
     }
 }
 
-/// write a usize data from kernel space to user space with the page table
-pub fn write_usize_to_userspace(page_table: &PageTable, va: VirtAddr, data: usize) {
+/// write a u64 data from kernel space to user space with the page table
+pub fn write_u64_to_userspace(page_table: &PageTable, va: VirtAddr, data: u64) {
     let vpn = va.floor();
     let ppn: PhysPageNum = page_table.translate(vpn).unwrap().ppn();
     let va_start = va.0 - vpn.0 * PAGE_SIZE;
     let bytes = ppn.get_bytes_array();
     let data_bytes = data.to_le_bytes();
     bytes[va_start..va_start + data_bytes.len()].copy_from_slice(&data_bytes);
+}
+
+/// write a [u8] data from kernel space to user space with the page table
+pub fn write_bytes_to_userspace(page_table: &PageTable, va: VirtAddr, data: &[u8]) {
+    let mut start = 0;
+    let mut current_va = va;
+
+    while start < data.len() {
+        let vpn = current_va.floor();
+        let offset = current_va.page_offset();
+        let ppn = page_table.translate(vpn).unwrap().ppn();
+        let bytes = ppn.get_bytes_array();
+
+        let end = (offset + (data.len() - start)).min(PAGE_SIZE);
+        let len = end - offset;
+        bytes[offset..offset + len].copy_from_slice(&data[start..start + len]);
+
+        start += len;
+        current_va = VirtAddr(current_va.0 + len);
+    }
 }

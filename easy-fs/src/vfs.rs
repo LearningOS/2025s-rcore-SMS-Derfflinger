@@ -8,6 +8,7 @@ use alloc::vec::Vec;
 use spin::{Mutex, MutexGuard};
 /// Virtual filesystem layer over easy-fs
 pub struct Inode {
+    ino: u64,
     block_id: usize,
     block_offset: usize,
     fs: Arc<Mutex<EasyFileSystem>>,
@@ -17,17 +18,23 @@ pub struct Inode {
 impl Inode {
     /// Create a vfs inode
     pub fn new(
+        ino: u32,
         block_id: u32,
         block_offset: usize,
         fs: Arc<Mutex<EasyFileSystem>>,
         block_device: Arc<dyn BlockDevice>,
     ) -> Self {
         Self {
+            ino: ino as u64,
             block_id: block_id as usize,
             block_offset,
             fs,
             block_device,
         }
+    }
+    /// get self ino
+    pub fn get_ino(&self) -> u64 {
+        self.ino
     }
     /// Call a function over a disk inode to read it
     fn read_disk_inode<V>(&self, f: impl FnOnce(&DiskInode) -> V) -> V {
@@ -65,6 +72,7 @@ impl Inode {
             self.find_inode_id(name, disk_inode).map(|inode_id| {
                 let (block_id, block_offset) = fs.get_disk_inode_pos(inode_id);
                 Arc::new(Self::new(
+                    inode_id,
                     block_id,
                     block_offset,
                     self.fs.clone(),
@@ -131,12 +139,61 @@ impl Inode {
         block_cache_sync_all();
         // return inode
         Some(Arc::new(Self::new(
+            new_inode_id,
             block_id,
             block_offset,
             self.fs.clone(),
             self.block_device.clone(),
         )))
         // release efs lock automatically by compiler
+    }
+
+    /// add a link from dir entry to inode
+    pub fn add_nlink(&self, old_name: &str, new_name: &str) -> bool {
+        let mut fs = self.fs.lock();
+        let disk_inode_id = match self.read_disk_inode(|root_inode| {
+            self.find_inode_id(old_name, root_inode)
+        }) {
+            Some(id) => id,
+            None => return false,
+        };
+
+        let (block_id, offset) = fs.get_disk_inode_pos(disk_inode_id);
+        get_block_cache(block_id as usize, Arc::clone(&self.block_device))
+            .lock()
+            .modify(offset, |disk_inode: &mut DiskInode| {
+            disk_inode.add_nlink_num();
+        });
+
+        self.modify_disk_inode(|root_inode| {
+            // append file in the dirent
+            let file_count = (root_inode.size as usize) / DIRENT_SZ;
+            let new_size = (file_count + 1) * DIRENT_SZ;
+            // increase size
+            self.increase_size(new_size as u32, root_inode, &mut fs);
+            // write dirent
+            let dirent = DirEntry::new(new_name, disk_inode_id);
+            root_inode.write_at(
+                file_count * DIRENT_SZ,
+                dirent.as_bytes(),
+                &self.block_device,
+            );
+        });
+
+        block_cache_sync_all();
+        true
+    }
+    /// return true if inode's type is dir 
+    pub fn is_dir(&self) -> bool {
+        self.read_disk_inode(|disk_inode| {
+            disk_inode.is_dir()
+        })
+    }
+    /// return the Inode's target DiskInode's nlink num
+    pub fn nlink_num(&self) -> u32 {
+        self.read_disk_inode(|disk_inode| {
+            disk_inode.nlink_num()
+        })
     }
     /// List inodes under current inode
     pub fn ls(&self) -> Vec<String> {

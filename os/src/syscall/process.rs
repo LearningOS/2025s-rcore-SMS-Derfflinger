@@ -4,7 +4,7 @@ use alloc::sync::Arc;
 
 use crate::{
     fs::{open_file, OpenFlags},
-    mm::{translated_refmut, translated_str, write_usize_to_userspace, MapPermission, PageTable, VirtAddr},
+    mm::{translated_refmut, translated_str, write_u64_to_userspace, MapPermission, PageTable, VirtAddr},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next, map_current_framed_area, set_current_priority, suspend_current_and_run_next, unmap_current_area, TaskControlBlock
     },
@@ -117,8 +117,8 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     let page_table = PageTable::from_token(current_user_token());
     let va = VirtAddr::from(_ts as usize);
 
-    write_usize_to_userspace(&page_table, va, sec);
-    write_usize_to_userspace(&page_table, VirtAddr::from(va.0 + 8), usec);
+    write_u64_to_userspace(&page_table, va, sec as u64);
+    write_u64_to_userspace(&page_table, VirtAddr::from(va.0 + 8), usec as u64);
 
     0
 }
