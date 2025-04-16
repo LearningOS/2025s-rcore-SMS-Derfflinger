@@ -1,5 +1,5 @@
 //! File and filesystem-related syscalls
-use crate::fs::{open_file, add_nlink, OpenFlags, Stat};
+use crate::fs::{add_nlink, open_file, sub_nlink, OpenFlags, Stat};
 use crate::mm::{translated_byte_buffer, translated_str, write_bytes_to_userspace, PageTable, UserBuffer, VirtAddr};
 use crate::task::{current_task, current_user_token};
 
@@ -134,5 +134,10 @@ pub fn sys_unlinkat(_name: *const u8) -> isize {
         "kernel:pid[{}] sys_unlinkat NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
+    
+    let name = translated_str(current_user_token(), _name);
+    if sub_nlink(name.as_str()) {
+        return 0;
+    }
     -1
 }

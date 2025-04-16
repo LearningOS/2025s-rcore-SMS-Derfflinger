@@ -116,6 +116,9 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
                 .map(|inode| Arc::new(OSInode::new(readable, writable, inode)))
         }
     } else {
+        if ROOT_INODE.find(name).is_none() {
+            return None;
+        }
         ROOT_INODE.find(name).map(|inode| {
             if flags.contains(OpenFlags::TRUNC) {
                 inode.clear();
@@ -128,6 +131,11 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
 /// create a nlink from old_name to new_name
 pub fn add_nlink(old_name: &str, new_name: &str) -> bool {
     ROOT_INODE.add_nlink(old_name, new_name)
+}
+
+/// sub a nlink from name to inode
+pub fn sub_nlink(name: &str) -> bool {
+    ROOT_INODE.sub_nlink(name)
 }
 
 impl File for OSInode {

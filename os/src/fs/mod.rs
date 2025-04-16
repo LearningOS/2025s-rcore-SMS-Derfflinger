@@ -61,5 +61,5 @@ impl Stat {
     }
 }
 
-pub use inode::{list_apps, open_file, add_nlink, OSInode, OpenFlags};
+pub use inode::{list_apps, open_file, add_nlink, sub_nlink, OSInode, OpenFlags};
 pub use stdio::{Stdin, Stdout};

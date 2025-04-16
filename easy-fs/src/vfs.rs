@@ -59,6 +59,9 @@ impl Inode {
                 disk_inode.read_at(DIRENT_SZ * i, dirent.as_bytes_mut(), &self.block_device,),
                 DIRENT_SZ,
             );
+            if dirent.inode_id() == 0 {
+                continue;
+            }
             if dirent.name() == name {
                 return Some(dirent.inode_id() as u32);
             }
@@ -180,6 +183,67 @@ impl Inode {
             );
         });
 
+        block_cache_sync_all();
+        true
+    }
+
+    fn remove_dir_entry(&self, name: &str) {
+        self.modify_disk_inode(|disk_inode| {
+            assert!(disk_inode.is_dir());
+            let file_count = (disk_inode.size as usize) / DIRENT_SZ;
+            let mut dirent = DirEntry::empty();
+            for i in 0..file_count {
+                disk_inode.read_at(
+                    i * DIRENT_SZ,
+                    dirent.as_bytes_mut(),
+                    &self.block_device,
+                );
+                if dirent.name() == name {
+
+                    let empty = DirEntry::empty();
+                    disk_inode.write_at(
+                        i * DIRENT_SZ,
+                        empty.as_bytes(),
+                        &self.block_device,
+                    );
+                    break;
+                }
+            }
+        });
+    }
+
+    /// sub a nlink from dir entry to inode
+    pub fn sub_nlink(&self, name: &str) -> bool {
+        let disk_inode_id = match self.read_disk_inode(|root_inode| {
+            self.find_inode_id(name, root_inode)
+        }) {
+            Some(id) => id,
+            None => return false,
+        };
+
+        let fs = self.fs.lock();
+        let (block_id, offset) = fs.get_disk_inode_pos(disk_inode_id);
+        drop(fs);
+        let nlink_num = get_block_cache(block_id as usize, Arc::clone(&self.block_device))
+            .lock()
+            .read(offset, |disk_inode: &DiskInode| {
+            disk_inode.nlink_num()
+        });
+
+        if nlink_num == 1 {
+            let target_inode = match self.find(name) {
+                Some(inode) => inode,
+                None => return false,
+            };
+            target_inode.clear();
+        }
+
+        get_block_cache(block_id as usize, Arc::clone(&self.block_device))
+            .lock()
+            .modify(offset, |disk_inode: &mut DiskInode| {
+            disk_inode.sub_nlink_num();
+        });
+        self.remove_dir_entry(name);
         block_cache_sync_all();
         true
     }
