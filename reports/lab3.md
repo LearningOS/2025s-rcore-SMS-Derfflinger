@@ -1,0 +1,56 @@
+# lab3(ch5)
+
+## 我实现的功能
+
+* 把上一个lab写的东西改过来
+* 实现了 `spawn` 系统调用，直接创建一个对应的新进程，然后加上父子关系。
+* 实现了 `set_priority` 系统调用，`BIG_STRIDE` 选了1_000_000，改了 `TaskManager` 的 `fetch` 函数，从队列中移除 `stride` 最小的任务。
+
+## 问答题
+
+* 实际情况是轮到 p1 执行吗？为什么？
+不是，因为$p2.stride + 10 = 260 \gt 255$，发生溢出了，之后$p2.stride = 260 \% 256 = 4$，$4 \lt 255$，仍然是p2执行。
+
+* 为什么？尝试简单说明（不要求严格证明）。
+查了一下可以使用反证法严格证明。个人理解是，进程优先级 >= 2 的情况下，每个进程的pass <= BigStride / 2，无论一个进程被调动的多么频繁，它的stride每次最多增加BigStride / 2，而每次都选择stride最小的进程调度，所以拉不开一个超过BigStride / 2 的差距，即STRIDE_MAX – STRIDE_MIN <= BigStride / 2。
+
+* 补全函数：
+溢出在模 2^64 意义下是合法的，可以看作一个环
+```rust
+use core::cmp::Ordering;
+
+struct Stride(u64);
+
+impl PartialOrd for Stride {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let BIG_STRIDE: u64 = 255;
+
+        let diff = self.0.wrapping_sub(other.0);
+        if diff <= BIG_STRIDE / 2 {
+            Some(Ordering::Less)
+        } else {
+            Some(Ordering::Greater)
+        }
+    }
+}
+
+impl PartialEq for Stride {
+    fn eq(&self, other: &Self) -> bool {
+        false
+    }
+}
+```
+
+## 荣誉准则
+
+1. 在完成本次实验的过程（含此前学习的过程）中，我曾分别与 以下各位 就（与本次实验相关的）以下方面做过交流，还在代码中对应的位置以注释形式记录了具体的交流对象及内容：
+
+无
+
+2. 此外，我也参考了 以下资料 ，还在代码中对应的位置以注释形式记录了具体的参考来源及内容：
+
+在写报告的时候问了ChatGPT问答题的最后一题
+
+3. 我独立完成了本次实验除以上方面之外的所有工作，包括代码与文档。 我清楚地知道，从以上方面获得的信息在一定程度上降低了实验难度，可能会影响起评分。
+
+4. 我从未使用过他人的代码，不管是原封不动地复制，还是经过了某些等价转换。 我未曾也不会向他人（含此后各届同学）复制或公开我的实验代码，我有义务妥善保管好它们。 我提交至本实验的评测系统的代码，均无意于破坏或妨碍任何计算机系统的正常运转。 我清楚地知道，以上情况均为本课程纪律所禁止，若违反，对应的实验成绩将按“-100”分计。
