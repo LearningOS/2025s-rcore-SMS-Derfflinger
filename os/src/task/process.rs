@@ -5,6 +5,7 @@ use super::manager::insert_into_pid2process;
 use super::TaskControlBlock;
 use super::{add_task, SignalFlags};
 use super::{pid_alloc, PidHandle};
+use super::deadlock_detect::DeadlockDetector;
 use crate::fs::{File, Stdin, Stdout};
 use crate::mm::{translated_refmut, MemorySet, KERNEL_SPACE};
 use crate::sync::{Condvar, Mutex, Semaphore, UPSafeCell};
@@ -49,6 +50,12 @@ pub struct ProcessControlBlockInner {
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
     /// condvar list
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
+    /// deadlock detect flag
+    pub deadlock_detect_flag: bool,
+    /// mutex deadlock detector
+    pub mutex_deadlock_detect: DeadlockDetector,
+    /// semaphore deadlock detector
+    pub semaphore_deadlock_detect: DeadlockDetector,
 }
 
 impl ProcessControlBlockInner {
@@ -81,6 +88,69 @@ impl ProcessControlBlockInner {
     /// get a task with tid in this process
     pub fn get_task(&self, tid: usize) -> Arc<TaskControlBlock> {
         self.tasks[tid].as_ref().unwrap().clone()
+    }
+
+    pub fn set_deadlock(&mut self, flag: bool) {
+        self.deadlock_detect_flag = flag;
+    }
+
+    pub fn is_detecting(&self) -> bool {
+        self.deadlock_detect_flag
+    }
+
+    pub fn add_detect_thread(&mut self, tid: usize) {
+        self.mutex_deadlock_detect.add_thread(tid);
+        self.semaphore_deadlock_detect.add_thread(tid);
+    }
+
+    /// add a mutex to mutex deadlock detector
+    pub fn add_mutex(&mut self, mutex_id: usize) {
+        self.mutex_deadlock_detect.add_mutex(mutex_id);
+    }
+
+    pub fn lock_mutex(&mut self, mutex_id: usize, tid: usize) {
+        self.mutex_deadlock_detect.lock(mutex_id, tid);
+    }
+
+    pub fn unlock_mutex(&mut self, mutex_id: usize, tid: usize) {
+        self.mutex_deadlock_detect.unlock(mutex_id, tid);
+    }
+
+    pub fn detect_mutex_safe(&self, mutex_id: usize, tid: usize) -> bool {
+        self.mutex_deadlock_detect.is_safe(mutex_id, tid)
+    }
+
+    pub fn add_mutex_need(&mut self, mutex_id: usize, tid: usize) {
+        self.mutex_deadlock_detect.add_need(mutex_id, tid);
+    }
+
+    pub fn remove_mutex_need(&mut self, mutex_id: usize, tid: usize) {
+        self.mutex_deadlock_detect.remove_need(mutex_id, tid);
+    }
+
+    /// add a semaphore to semaphore deadlock detector
+    pub fn add_semaphore(&mut self, semaphore_id: usize, count: usize) {
+        self.semaphore_deadlock_detect.add_semaphore(semaphore_id, count);
+    }
+
+    pub fn lock_semaphore(&mut self, semaphore_id: usize, tid: usize) {
+        self.semaphore_deadlock_detect.lock(semaphore_id, tid);
+    }
+
+    pub fn unlock_semaphore(&mut self, semaphore_id: usize, tid: usize) {
+        self.semaphore_deadlock_detect.unlock(semaphore_id, tid);
+    }
+
+    pub fn detect_semaphore_safe(&self, semaphore_id: usize, tid: usize) -> bool {
+        self.semaphore_deadlock_detect.is_safe(semaphore_id, tid)
+    }
+
+    pub fn add_semaphore_need(&mut self, semaphore_id: usize, tid: usize) {
+        self.semaphore_deadlock_detect.add_need(semaphore_id, tid);
+    }
+
+    pub fn remove_semaphore_need(&mut self, semaphore_id: usize, tid: usize) {
+        self.semaphore_deadlock_detect.remove_need(semaphore_id, tid);
     }
 }
 
@@ -119,6 +189,9 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_detect_flag: false,
+                    mutex_deadlock_detect: DeadlockDetector::new(),
+                    semaphore_deadlock_detect: DeadlockDetector::new(),
                 })
             },
         });
@@ -245,6 +318,9 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_detect_flag: parent.deadlock_detect_flag,
+                    mutex_deadlock_detect: parent.mutex_deadlock_detect.clone(),
+                    semaphore_deadlock_detect: parent.semaphore_deadlock_detect.clone(),
                 })
             },
         });
