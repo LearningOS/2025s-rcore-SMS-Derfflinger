@@ -76,7 +76,7 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
     let mut process_inner = process.inner_exclusive_access();
     process_inner.add_mutex_need(mutex_id, tid);
 
-    if process_inner.is_detecting() && !process_inner.detect_mutex_safe(mutex_id, tid) {
+    if process_inner.is_detecting() && !process_inner.detect_mutex_safe() {
         process_inner.remove_mutex_need(mutex_id, tid);
         return -0xDEAD;
     }
@@ -170,17 +170,17 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
     let mut process_inner = process.inner_exclusive_access();
     process_inner.add_semaphore_need(sem_id, tid);
 
-    if process_inner.is_detecting() && !process_inner.detect_semaphore_safe(sem_id, tid) {
+    if process_inner.is_detecting() && !process_inner.detect_semaphore_safe() {
         process_inner.remove_semaphore_need(sem_id, tid);
         debug!("lock semaphore id: {}, failed; tid: {}", sem_id, tid);
         return -0xDEAD;
     }
 
     debug!("lock semaphore id: {}, sucessed; tid: {}", sem_id, tid);
-    process_inner.lock_semaphore(sem_id, tid);
     let sem = Arc::clone(process_inner.semaphore_list[sem_id].as_ref().unwrap());
     drop(process_inner);
     sem.down();
+    current_process().inner_exclusive_access().lock_semaphore(sem_id, tid);
     0
 }
 /// condvar create syscall

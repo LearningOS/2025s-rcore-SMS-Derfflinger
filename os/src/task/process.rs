@@ -116,8 +116,8 @@ impl ProcessControlBlockInner {
         self.mutex_deadlock_detect.unlock(mutex_id, tid);
     }
 
-    pub fn detect_mutex_safe(&self, mutex_id: usize, tid: usize) -> bool {
-        self.mutex_deadlock_detect.is_safe(mutex_id, tid)
+    pub fn detect_mutex_safe(&self) -> bool {
+        self.mutex_deadlock_detect.is_safe()
     }
 
     pub fn add_mutex_need(&mut self, mutex_id: usize, tid: usize) {
@@ -141,8 +141,8 @@ impl ProcessControlBlockInner {
         self.semaphore_deadlock_detect.unlock(semaphore_id, tid);
     }
 
-    pub fn detect_semaphore_safe(&self, semaphore_id: usize, tid: usize) -> bool {
-        self.semaphore_deadlock_detect.is_safe(semaphore_id, tid)
+    pub fn detect_semaphore_safe(&self) -> bool {
+        self.semaphore_deadlock_detect.is_safe()
     }
 
     pub fn add_semaphore_need(&mut self, semaphore_id: usize, tid: usize) {

@@ -30,13 +30,13 @@ impl DeadlockDetector {
         self.need[tid][rid] -= 1;
     }
 
-    pub fn is_safe(&self, rid: usize, tid: usize) -> bool {
+    pub fn is_safe(&self) -> bool {
         let mut work = self.available.clone();
         let mut finish = vec![false; self.need.len()];
 
-        if self.need[tid][rid] == 0 || self.available[rid] == 0 {
-            return false;
-        }
+        debug!("available : {:?}", self.available);
+        debug!("allocation: {:?}", self.allocation);
+        debug!("need      : {:?}", self.need);
 
         // 先tid，再rid
         let mut made_progress = true;
